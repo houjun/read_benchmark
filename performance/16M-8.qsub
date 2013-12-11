@@ -1,0 +1,76 @@
+#!/bin/sh
+#PBS -N PERF-16M-8
+#PBS -l nodes=9:ppn=8
+#PBS -l walltime=2:00:00
+#PBS -j oe
+
+datafile=4G
+REQSIZE=16777216
+PROC=8
+REPEAT=32
+export PATH=${HOME}/build/mpich_prefetch/bin:$PATH
+export PATH=${HOME}/build/pvfs2/bin:${HOME}/build/pvfs2/sbin:$PATH
+export PVFS2TAB_FILE=${HOME}/pvfs-setup/pvfs2tab
+
+cd ${HOME}/pvfs-setup
+#setup 8 servers
+./setup.sh 8 8 
+
+echo ${TMPDIR}
+
+#copy data, 5 replications
+for i in `seq 0 9`
+do
+    pvfs2-cp ${HOME}/data/$datafile ${TMPDIR}/mnt/pvfs2/$datafile.$i
+done
+
+pvfs2-ls
+
+#first test the read time of this conf
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_read_time pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT $PBS_O_WORKDIR/read.time
+
+#read average read time from file
+cd $PBS_O_WORKDIR
+read_time=`cat read.time`
+echo "readtime: $read_time"
+
+#repeat 5 times for each
+echo "Wait 50%"
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT  $read_time 0.5
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.5 $REQSIZE $REPEAT  $read_time 0.5
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.6 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.7 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.8 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.9 $REQSIZE $REPEAT $read_time 0.5
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT $read_time 0.5
+
+echo "Wait 100%"
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT  $read_time 1.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.5 $REQSIZE $REPEAT  $read_time 1.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.6 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.7 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.8 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.9 $REQSIZE $REPEAT $read_time 1.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT $read_time 1.0
+
+echo "Wait 200%"
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT  $read_time 2.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.5 $REQSIZE $REPEAT  $read_time 2.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.6 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.7 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.8 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.9 $REQSIZE $REPEAT $read_time 2.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_perf pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT $read_time 2.0
+
+cd ${HOME}/pvfs-setup
+./cleanup.sh
+

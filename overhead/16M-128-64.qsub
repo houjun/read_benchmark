@@ -1,0 +1,76 @@
+#!/bin/sh
+#PBS -N OVERHEAD-16M-128
+#PBS -l nodes=24:ppn=8
+#PBS -l walltime=1:30:00
+#PBS -j oe
+
+datafile=128G
+REQSIZE=16777216
+PROC=128
+REPEAT=64
+export PATH=${HOME}/build/mpich_prefetch/bin:$PATH
+export PATH=${HOME}/build/pvfs2/bin:${HOME}/build/pvfs2/sbin:$PATH
+export PVFS2TAB_FILE=${HOME}/pvfs-setup/pvfs2tab
+
+cd $PBS_O_WORKDIR/pvfs-setup
+#setup 8 servers
+./setup.sh 8 8 
+
+echo ${TMPDIR}
+
+#copy data, 5 replications
+for i in `seq 0 4`
+do
+    pvfs2-cp ${HOME}/data/$datafile ${TMPDIR}/mnt/pvfs2/$datafile.$i
+done
+
+
+pvfs2-ls
+    
+#repeat 5 times
+echo "128 Process"
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT
+
+echo "64 Process"
+PROC=64
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.0 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.1 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.2 $REQSIZE $REPEAT
+echo "prefetch"
+home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.3 $REQSIZE $REPEAT
+echo "no prefetch"
+home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/simple_strided_test pvfs2:${TMPDIR}/mnt/pvfs2/$datafile.4 $REQSIZE $REPEAT
+
+
