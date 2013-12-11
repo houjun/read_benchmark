@@ -35,7 +35,7 @@ typedef enum {
 } decomp_t;
 
 void usage() {
-    printf( "Usage:\nread_4D FILENAME Decompose_Type X Y Z B Time_step [T_replay_start] [T_replay_end]\n");
+    printf( "Usage:\nread_4D FILENAME Decompose_Type X Y Z B Time_step Wait_time Time_modifier [T_replay_start] [T_replay_end]\n");
     exit(1);
 }
 
@@ -59,7 +59,8 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
     // check arguments
-    if (argc < 10) {
+    if (argc < 9) {
+        printf("%d\n",argc);
         usage();
     }
     // init
@@ -67,18 +68,18 @@ int main(int argc, char *argv[])
 
     if(strcmp(argv[2], "ROW") == 0){
         decompose_type = ROW;
-        if(my_rank == 0)
-            printf("ROW ");
+//        if(my_rank == 0)
+//            printf("ROW ");
     }
     else if(strcmp(argv[2], "COL") == 0){
         decompose_type = COL;
-        if(my_rank == 0)
-            printf("COL ");
+//        if(my_rank == 0)
+//            printf("COL ");
     }
     else if(strcmp(argv[2], "CUBE") == 0){
         decompose_type = CUBE;
-        if(my_rank == 0)
-            printf("CUBE ");
+//        if(my_rank == 0)
+//            printf("CUBE ");
     }
     else{
         printf("Unsupported decompose type: %s\n", argv[2]);
@@ -103,9 +104,9 @@ int main(int argc, char *argv[])
         t_replay_end   = time_step;
     }
 
-    if(my_rank == 0)
-        printf("x:%d y:%d z:%d b:%d time_step:%d wait_time:%lf multiplier:%lf t_replay_start:%d t_replay_end:%d \n",
-               x, y, z, b, time_step, ht_wait_time, ht_modifier, t_replay_start, t_replay_end);
+//    if(my_rank == 0)
+//        printf("x:%d y:%d z:%d b:%d time_step:%d wait_time:%lf multiplier:%lf t_replay_start:%d t_replay_end:%d \n",
+//               x, y, z, b, time_step, ht_wait_time, ht_modifier, t_replay_start, t_replay_end);
     /*
     int sleep;
     if(my_rank == 0) {
@@ -153,13 +154,14 @@ int main(int argc, char *argv[])
     ts.tv_sec = (int)ht_wait_time;
     ts.tv_nsec = (ht_wait_time - ts.tv_sec) * 1000000000;
 
+    // start together
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+
     // Open file
     err = MPI_File_open(MPI_COMM_WORLD, fname, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
     assert(err == MPI_SUCCESS);
 
-    // start together
-    MPI_Barrier(MPI_COMM_WORLD);
-    
     start_time = MPI_Wtime();
 
     if(decompose_type == ROW) {
@@ -189,10 +191,10 @@ int main(int argc, char *argv[])
             
             for(j = 0; j < z; j++) {
             
-                for(i = 0; i < my_read_cnt; i++) {
+                for(i = 0; i < y; i++) {
                     
                     MPI_File_read_at(fh, (start_offset + my_rank * my_one_read_size + i*x*b + j*x*b*y)
-                                      , buf + i*my_one_read_size + j*x*b*y, 1, contig, &status);
+                                      , buf + i*my_one_read_size, 1, contig, &status);
                     nanosleep(&ts, NULL);
 
                 }
@@ -206,10 +208,11 @@ int main(int argc, char *argv[])
 
     }
      
-    elapsed_time = MPI_Wtime() - start_time;
     
+    elapsed_time = MPI_Wtime() - start_time;
     err = MPI_File_close(&fh);
     assert(err == MPI_SUCCESS);
+    
 
     MPI_Reduce(&elapsed_time, &all_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Reduce(&elapsed_time, &all_time_min, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
