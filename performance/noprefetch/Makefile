@@ -1,6 +1,6 @@
 CC=/home/tanghoujun/build/mpich/bin/mpicc
 #CFLAGS=-g
-CFLAGS=-O2
+#CFLAGS=-O2
 RM=rm -f
 
 SRCS=$(wildcard *.c)

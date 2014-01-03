@@ -1,0 +1,62 @@
+#!/bin/sh
+#PBS -N COL-128M-16
+#PBS -l nodes=2:ppn=8
+#PBS -l walltime=0:30:00
+#PBS -j oe
+
+datafile=1G
+PROC=16
+DIM=128
+BLK=8
+TIMESTEP=8
+export PATH=${HOME}/build/mpich_prefetch/bin:$PATH
+#export PATH=${HOME}/build/pvfs2/bin:${HOME}/build/pvfs2/sbin:$PATH
+#export PVFS2TAB_FILE=${HOME}/pvfs-setup/pvfs2tab
+
+#cd ${HOME}/pvfs-setup
+##setup 8 servers
+#./setup.sh 8 8 
+
+#echo ${TMPDIR}
+
+#copy data, 4 replications
+#for i in `seq 0 1`
+#do
+#    pvfs2-cp ${HOME}/data/$datafile ${TMPDIR}/mnt/pvfs2/$datafile.$i
+#done
+#
+#pvfs2-ls
+
+cd $PBS_O_WORKDIR
+if [ -e read.time ];
+then
+    rm read.time
+fi
+
+datapath=pvfs2:/pvfs/tanghoujun
+#first test the read time of this conf
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/read_4D_time $datapath/$datafile.0 COL $DIM $DIM $DIM $BLK $TIMESTEP $PBS_O_WORKDIR/read.time
+
+#read average read time from file
+if [ -e read.time ];
+then
+    read_time=`cat read.time`
+    echo "readtime: $read_time"
+else
+    echo "readtime file not exist"
+    exit
+fi
+
+echo "NP=$PROC"
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/read_4D $datapath/$datafile.1 COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0 
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/read_4D $datapath/$datafile.2  COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/read_4D $datapath/$datafile.3 COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/read_4D $datapath/$datafile.4  COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+#/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/read_4D $datapath/$datafile.5 COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0 
+#/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/read_4D $datapath/$datafile.6  COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+#/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/read_4D $datapath/$datafile.7 COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+#/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/read_4D $datapath/$datafile.8  COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+#/home/tanghoujun/build/mpich/bin/mpirun -np $PROC $PBS_O_WORKDIR/noprefetch/read_4D $datapath/$datafile.9 COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+#/home/tanghoujun/build/mpich_prefetch/bin/mpirun -np $PROC $PBS_O_WORKDIR/prefetch/read_4D $datapath/$datafile.0  COL $DIM $DIM $DIM $BLK $TIMESTEP $read_time 1.0
+
+

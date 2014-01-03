@@ -1,0 +1,168 @@
+f126
+f128
+f130
+f137
+f157
+f160
+f171
+f172
+f126 DIR DELELETED
+f126 DIR CREATED
+f128 DIR DELELETED
+f128 DIR CREATED
+f130 DIR DELELETED
+f130 DIR CREATED
+f137 DIR DELELETED
+f137 DIR CREATED
+f157 DIR DELELETED
+f157 DIR CREATED
+f160 DIR DELELETED
+f160 DIR CREATED
+f171 DIR DELELETED
+f171 DIR CREATED
+f172 DIR DELELETED
+f172 DIR CREATED
+/home/tanghoujun/pvfs-setup/pvfs2tab
+
+(1) Parsing tab file...
+
+(2) Initializing system interface...
+
+(3) Initializing each file system found in tab file: /home/tanghoujun/pvfs-setup/pvfs2tab...
+
+   PVFS2 servers: tcp://f126-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f128-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f130-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f137-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f157-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f160-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f171-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+   PVFS2 servers: tcp://f172-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+   /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2: Ok
+
+(4) Searching for /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2 in pvfstab...
+
+   PVFS2 servers: tcp://f126-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f128-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f130-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f137-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f157-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f160-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f171-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   PVFS2 servers: tcp://f172-ib:3334
+   Storage name: pvfs2-fs
+   Local mount point: /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+
+   meta servers:
+   tcp://f126-ib:3334
+   tcp://f128-ib:3334
+   tcp://f130-ib:3334
+   tcp://f137-ib:3334
+   tcp://f157-ib:3334
+   tcp://f160-ib:3334
+   tcp://f171-ib:3334
+   tcp://f172-ib:3334
+
+   data servers:
+   tcp://f126-ib:3334
+   tcp://f128-ib:3334
+   tcp://f130-ib:3334
+   tcp://f137-ib:3334
+   tcp://f157-ib:3334
+   tcp://f160-ib:3334
+   tcp://f171-ib:3334
+   tcp://f172-ib:3334
+
+(5) Verifying that all servers are responding...
+
+   meta servers:
+   tcp://f126-ib:3334 Ok
+   tcp://f128-ib:3334 Ok
+   tcp://f130-ib:3334 Ok
+   tcp://f137-ib:3334 Ok
+   tcp://f157-ib:3334 Ok
+   tcp://f160-ib:3334 Ok
+   tcp://f171-ib:3334 Ok
+   tcp://f172-ib:3334 Ok
+
+   data servers:
+   tcp://f126-ib:3334 Ok
+   tcp://f128-ib:3334 Ok
+   tcp://f130-ib:3334 Ok
+   tcp://f137-ib:3334 Ok
+   tcp://f157-ib:3334 Ok
+   tcp://f160-ib:3334 Ok
+   tcp://f171-ib:3334 Ok
+   tcp://f172-ib:3334 Ok
+
+(6) Verifying that fsid 1563882747 is acceptable to all servers...
+
+   Ok; all servers understand fs_id 1563882747
+
+(7) Verifying that root handle is owned by one server...
+
+   Root handle: 1048576
+     Ok; root handle is owned by exactly one server.
+
+=============================================================
+
+The PVFS2 filesystem at /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2 appears to be correctly configured.
+
+PVFS is mounted to /scratch/2002817.fmgt2.lcrc.anl.gov/mnt/pvfs2
+0 copied
+1 copied
+2 copied
+3 copied
+4 copied
+5 copied

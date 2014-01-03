@@ -59,10 +59,13 @@ int main (int argc, char *argv[])
     MPI_Reduce(&elapsed_time, &all_time_avg, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
     
     double data_in_mb = (proc_num*(double)req_size*repeat_time)/(1024.0*1024.0);
-    if(my_rank == 0)
+    if(my_rank == 0) {
+    
+        all_time_avg /= proc_num;
         printf("Total time: %lf Min time: %lf Avg time: %lf Total data: %dM Agg Bandwidth: %lf\n", all_time_max, all_time_min, all_time_avg, (int)data_in_mb, data_in_mb/all_time_max);
 
 
+    }
     if(read_data != NULL)
         free(read_data);
     MPI_Type_free(&contig_type);

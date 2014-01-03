@@ -9,12 +9,10 @@ REQSIZE=1048576
 PROC=32
 REPEAT=512
 
-TMPADD="$TMPDIR"
-TMPNUM=${TMPADD:9:7}
 
 export PATH=${HOME}/build/mpich_prefetch/bin:$PATH
 export PATH=${HOME}/build/pvfs2/bin:${HOME}/build/pvfs2/sbin:$PATH
-export PVFS2TAB_FILE=${HOME}/pvfs-setup/pvfs2tab.$TMPNUM
+export PVFS2TAB_FILE=${HOME}/pvfs-setup/pvfs2tab
 
 echo $PVFS2TAB_FILE
 

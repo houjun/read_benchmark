@@ -74,6 +74,7 @@ int main (int argc, char *argv[])
     
     double data_in_mb = (proc_num*(double)req_size*repeat_time)/(1024.0*1024.0);
     if(my_rank == 0) {
+        all_time_avg /= proc_num;
         printf("Total time: %lf Min time: %lf Avg time: %lf Total data: %dM Agg Bandwidth: %lf\n", all_time_max, all_time_min, all_time_avg, (int)data_in_mb, data_in_mb/all_time_max);
         fflush(stdout);
     }
