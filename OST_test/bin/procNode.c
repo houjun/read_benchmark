@@ -7,16 +7,16 @@
 #include "mpi.h"
 
 //const int kOST=156; // Hopper
-const int kOST=144; // Edison
+const int kOST         =144; // Edison
+const int kCorePerNode = 24;    // NERSC
 
 int main (int argc, char *argv[])
 {
-    
     int procNum, worldRank, len;
     int ioProc, ioRank, scatterProc, scatterRank;
     int i, j, k;
-    int reqSize, procPerNode, dbg_print;
-    double start_time, elapsedTime, allTimeMax, allTimeAvg, allTimeMin;
+    int ioProcPerNode, dbg_print;
+    double start_time, elapsedTime, scatterTime, allTimeMax, allTimeAvg, allTimeMin;
 
     char filename[1024];
     char *ioData, *myData;
@@ -24,8 +24,13 @@ int main (int argc, char *argv[])
     double timeStat[kOST];
     double globalTimeStat[kOST];
     double *doublePtr;
+    
+    int colorIO;
+    int colorScatter;
+    int scatterGroupSize;
 
-    MPI_Offset disp, stripeSize;
+    MPI_Offset disp, myReqSize, stripeSize, ioReadSize;
+    MPI_Datatype strided;
 
     MPI_Status status;
     MPI_File fh;
@@ -39,17 +44,25 @@ int main (int argc, char *argv[])
     if(argc < 3) {
         if (worldRank == 0) {
             printf("Wrong argument number!\n");
-            printf("Use %s filepath single_read_size(MB) proc_per_node\n", argv[0]);
+            printf("Use %s filepath single_read_size(MB) I/O_proc_per_node\n", argv[0]);
         }
         MPI_Finalize();
         exit(-1);
     }
  
     // filename = argv[1];
-    reqSize     = atoi(argv[2]);
-    procPerNode = atoi(argv[3]);
-    stripeSize  = 2148473648;
+    myReqSize     = atoi(argv[2]);
+    myReqSize    *= 1048576;
+    ioProcPerNode = atoi(argv[3]);
+    stripeSize    = 2147483648;
+    
+    scatterGroupSize = kCorePerNode / ioProcPerNode;
+    ioReadSize       = myReqSize * scatterGroupSize;
     //stripeSize  = 64;
+
+    MPI_Type_vector(scatterGroupSize, myReqSize, stripeSize, MPI_CHAR, &strided);
+    MPI_Type_commit(&strided);
+   
 
     /* printf("stripeSize: %lld\n", stripeSize); */
 
@@ -57,21 +70,13 @@ int main (int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &procNum);
     MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
 
-    int colorIO;
-    int colorScatter;
-
-    // color for I/O ranks
-    if (worldRank % procPerNode == 0) {
-        colorIO = 0;
-    }
-    else {
-        colorIO = 1;
-    }
-    colorScatter = (int) (worldRank / procPerNode);
+    // color for I/O ranks and scatter ranks
+    colorIO      = worldRank % scatterGroupSize == 0 ? 0 : 1;
+    colorScatter = (int) (worldRank / scatterGroupSize);
 
     // debug print
     /* MPI_Barrier(MPI_COMM_WORLD); */
-    /* printf("World rank: %d, colorIO: %d, colorScatter: %d\n", worldRank, colorIO, colorScatter); */
+    printf("World rank: %d, colorIO: %d, colorScatter: %d\n", worldRank, colorIO, colorScatter);
 
 
     // split to I/O ranks
@@ -85,16 +90,28 @@ int main (int argc, char *argv[])
     MPI_Comm_rank(MY_COMM_SCATTER, &scatterRank);
     
     // debug print
-    /* MPI_Barrier(MPI_COMM_WORLD); */
     /* printf("World Rank: %d, IO Rank: %d, Scatter Rank:%d\n", worldRank, ioRank, scatterRank); */
 
      
     // data allocation
-    if (worldRank % procPerNode == 0)
-        ioData  = (char*)malloc(procPerNode * reqSize * sizeof(char));
+    // I/O process needs more space
+    if (colorIO == 0) {
+        //debug print
+        printf("%d: %dMB\n", worldRank, (int)(ioReadSize / 1048576));
+        ioData  = (char*)malloc(ioReadSize * sizeof(char));
+        if (ioData == NULL) {
+            fprintf(stderr, "Error allocating ioData\n");
+            MPI_Abort(MPI_COMM_WORLD, -1);
+        }
+    }
 
     // local for all proc
-    myData  = (char*)malloc(reqSize * sizeof(char));
+    myData  = (char*)malloc(myReqSize * sizeof(char));
+    if (myData == NULL) {
+        fprintf(stderr, "Error allocating myData\n");
+        MPI_Abort(MPI_COMM_WORLD, -1);
+    }
+    /* printf("%d: %dMB\n", worldRank, (int)(myReqSize / 1048576)); */
 
     disp = stripeSize * worldRank;
 
@@ -114,18 +131,15 @@ int main (int argc, char *argv[])
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
         
-        MPI_File_set_view( fh, disp, MPI_CHAR, MPI_CHAR, "native", MPI_INFO_NULL);
+        MPI_File_set_view( fh, disp, MPI_CHAR, strided, "native", MPI_INFO_NULL);
 
-        // sync time
+
         MPI_Barrier(MY_COMM_IO);
         start_time = MPI_Wtime();
 
-        MPI_File_read( fh, ioData, reqSize * procPerNode, MPI_CHAR, &status );
-        //MPI_File_read_all( fh, ioData, reqSize * procPerNode, MPI_CHAR, &status );
+        MPI_File_read( fh, ioData, ioReadSize, MPI_CHAR, &status );
  
         elapsedTime = MPI_Wtime() - start_time;
-
-        /* printf("Rank: %d, time %.6f, start offset: %lld\n", worldRank, elapsedTime, disp); */
         
         MPI_File_close(&fh);
 
@@ -134,33 +148,57 @@ int main (int argc, char *argv[])
         /* printf("Rank: %d, data[0]: %f\n", worldRank, *doublePtr); */
     }
 
-    MPI_Reduce(&elapsedTime, &allTimeMax, 1, MPI_DOUBLE, MPI_MAX, 0, MY_COMM_IO);
-    MPI_Reduce(&elapsedTime, &allTimeMin, 1, MPI_DOUBLE, MPI_MIN, 0, MY_COMM_IO);
-    MPI_Reduce(&elapsedTime, &allTimeAvg, 1, MPI_DOUBLE, MPI_SUM, 0, MY_COMM_IO);
-    allTimeAvg /= procPerNode;
+    // debug print
+    /* if (worldRank == 0) { */
+    /*     doublePtr = (double*)ioData; */
+    /*     printf("Data[%lld]%f\n", myReqSize/8, doublePtr[myReqSize/8]); */
+    /*     printf("Data[%lld]%f\n", myReqSize/8 - 1, doublePtr[(myReqSize)/8 - 1]); */
+    /* } */
+    
+
+    start_time = MPI_Wtime();
+
+    // Scatter data from I/O ranks to COMM_SCATTER
+    MPI_Scatter(ioData, myReqSize, MPI_CHAR, myData, myReqSize, MPI_CHAR, 0, MY_COMM_SCATTER);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    // Scatter data from I/O ranks to COMM_SCATTER
-    MPI_Scatter(ioData, reqSize, MPI_CHAR, myData, reqSize, MPI_CHAR, 0, MY_COMM_SCATTER);
+    scatterTime = MPI_Wtime() - start_time;
 
     doublePtr = (double*)myData;
-    printf("%d: [0]%f [8]%f\n", worldRank, *doublePtr, doublePtr[7]);
-    
-    //int err; 
-    //err = MPI_Reduce(timeStat, globalTimeStat, kOST*10, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    //if (err != MPI_SUCCESS) {
-    //    printf("Error Reducing, exiting...\n");
-    //    exit(-1);
-    //}
+    int myTotalDoubleNum;
+    double mySum;
+    myTotalDoubleNum = myReqSize / sizeof(double);
+    mySum = 0.0;
+    for (i = 0; i < myTotalDoubleNum; i++) {
+        mySum += doublePtr[i];
+    }
+    printf("My sum: %f\n", mySum);
 
-    if (worldRank % procPerNode == 0) {
+    /* if (colorIO == 0) { */
+    /*     printf("Rank: %d, time %.6f, start offset: %lld, size: %llu\n", worldRank, elapsedTime, disp, ioReadSize); */
+    /* } */
+
+    // stat for read time among I/O ranks
+    MPI_Reduce(&elapsedTime, &allTimeMax, 1, MPI_DOUBLE, MPI_MAX, 0, MY_COMM_IO);
+    MPI_Reduce(&elapsedTime, &allTimeMin, 1, MPI_DOUBLE, MPI_MIN, 0, MY_COMM_IO);
+    MPI_Reduce(&elapsedTime, &allTimeAvg, 1, MPI_DOUBLE, MPI_SUM, 0, MY_COMM_IO);
+    allTimeAvg /= ioProcPerNode;
+    if (worldRank == 0) {
+        printf("Read time\n%f, %f, %f\n", allTimeMin, allTimeAvg, allTimeMax);
+        printf("Scatter time\n%f\n", scatterTime);
+    }
+   
+   
+    if (colorIO == 0) {
         free(ioData);
     }
     free(myData);
 
     MPI_Comm_free(&MY_COMM_IO);
     MPI_Comm_free(&MY_COMM_SCATTER);
+
+    MPI_Type_free(&strided);
     MPI_Finalize();
 
     return 0;
