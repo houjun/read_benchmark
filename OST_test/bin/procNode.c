@@ -71,7 +71,7 @@ int main (int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
 
     // color for I/O ranks and scatter ranks
-    colorIO      = worldRank % scatterGroupSize == 0 ? 0 : 1;
+    colorIO      = worldRank % scatterGroupSize == 0 ? 0 : MPI_UNDEFINED;
     colorScatter = (int) (worldRank / scatterGroupSize);
 
     // debug print
@@ -81,8 +81,10 @@ int main (int argc, char *argv[])
 
     // split to I/O ranks
     MPI_Comm_split(MPI_COMM_WORLD, colorIO, worldRank, &MY_COMM_IO);
-    MPI_Comm_size(MY_COMM_IO, &ioProc);
-    MPI_Comm_rank(MY_COMM_IO, &ioRank);
+    if (colorIO == 0) {
+        MPI_Comm_size(MY_COMM_IO, &ioProc);
+        MPI_Comm_rank(MY_COMM_IO, &ioRank);
+    }
 
     // split to scatter groups
     MPI_Comm_split(MPI_COMM_WORLD, colorScatter, worldRank, &MY_COMM_SCATTER);
@@ -117,12 +119,6 @@ int main (int argc, char *argv[])
 
     sprintf(filename, "%s", argv[1]);
 
-    // debug print
-    /* if (worldRank == 0) { */
-    /*     printf("filename: %s\n", filename); */
-    /*     printf("Rank,     time,     start offset\n"); */
-    /* } */
-
     if (colorIO == 0) {
 
         MPI_File_open(MY_COMM_IO, filename, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
@@ -144,8 +140,8 @@ int main (int argc, char *argv[])
         MPI_File_close(&fh);
 
         // debug print
-        /* doublePtr = (double*)ioData; */
-        /* printf("Rank: %d, data[0]: %f\n", worldRank, *doublePtr); */
+        doublePtr = (double*)ioData;
+        printf("Rank: %d, data[0]: %f, disp: %lld, size: %lld\n", worldRank, *doublePtr, disp, ioReadSize);
     }
 
     // debug print
@@ -165,6 +161,7 @@ int main (int argc, char *argv[])
 
     scatterTime = MPI_Wtime() - start_time;
 
+    // data correctness verification
     doublePtr = (double*)myData;
     int myTotalDoubleNum;
     double mySum;
@@ -173,29 +170,32 @@ int main (int argc, char *argv[])
     for (i = 0; i < myTotalDoubleNum; i++) {
         mySum += doublePtr[i];
     }
-    printf("My sum: %f\n", mySum);
+    printf("[%d] %f\n", worldRank, mySum);
 
     /* if (colorIO == 0) { */
     /*     printf("Rank: %d, time %.6f, start offset: %lld, size: %llu\n", worldRank, elapsedTime, disp, ioReadSize); */
     /* } */
 
     // stat for read time among I/O ranks
-    MPI_Reduce(&elapsedTime, &allTimeMax, 1, MPI_DOUBLE, MPI_MAX, 0, MY_COMM_IO);
-    MPI_Reduce(&elapsedTime, &allTimeMin, 1, MPI_DOUBLE, MPI_MIN, 0, MY_COMM_IO);
-    MPI_Reduce(&elapsedTime, &allTimeAvg, 1, MPI_DOUBLE, MPI_SUM, 0, MY_COMM_IO);
-    allTimeAvg /= ioProcPerNode;
-    if (worldRank == 0) {
-        printf("Read time\n%f, %f, %f\n", allTimeMin, allTimeAvg, allTimeMax);
-        printf("Scatter time\n%f\n", scatterTime);
+    if (colorIO == 0) {
+        MPI_Reduce(&elapsedTime, &allTimeMax, 1, MPI_DOUBLE, MPI_MAX, 0, MY_COMM_IO);
+        MPI_Reduce(&elapsedTime, &allTimeMin, 1, MPI_DOUBLE, MPI_MIN, 0, MY_COMM_IO);
+        MPI_Reduce(&elapsedTime, &allTimeAvg, 1, MPI_DOUBLE, MPI_SUM, 0, MY_COMM_IO);
+        allTimeAvg /= ioProcPerNode;
+
+        if (worldRank == 0) {
+            printf("Read time\n%f, %f, %f\n", allTimeMin, allTimeAvg, allTimeMax);
+            printf("Scatter time\n%f\n", scatterTime);
+        }
     }
    
    
     if (colorIO == 0) {
         free(ioData);
+        MPI_Comm_free(&MY_COMM_IO);
     }
-    free(myData);
 
-    MPI_Comm_free(&MY_COMM_IO);
+    free(myData);
     MPI_Comm_free(&MY_COMM_SCATTER);
 
     MPI_Type_free(&strided);
