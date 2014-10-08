@@ -10,35 +10,51 @@
 const int kOST         =144; // Edison
 const int kCorePerNode = 24;    // NERSC
 
+void PrintData (double *data, int worldRank, long long int disp, long long int ioReadSize)
+{
+    int i;
+    for (i = 0; i < ioReadSize/8; i++) {
+        if (i % 10 == 0) {
+            printf("\n");
+        }
+        printf("%f  ", data[i]);
+        
+    }
+}
+
+void DataSum (double *data, int worldRank, int myTotalDoubleNum)
+{
+    int i;
+    double mySum = 0.0;
+    for (i = 0; i < myTotalDoubleNum; i++) {
+        mySum += data[i];
+    }
+    printf("[%d] %f\n", worldRank, mySum);
+    
+    // Barrier to make sure the timing are not messed up with above prints
+    MPI_Barrier(MPI_COMM_WORLD);
+}
+
 int main (int argc, char *argv[])
 {
     int procNum, worldRank, len;
     int ioProc, ioRank, scatterProc, scatterRank;
     int i, j, k;
     int ioProcPerNode, dbg_print;
-    int myTotalDoubleNum;
+    int colorIO, colorScatter, scatterGroupSize;
 
-    char filename[1024];
     double *ioData, *myData;
-
-    double start_time, elapsedTime, scatterTime, allTimeMax, allTimeAvg, allTimeMin;
-    double timeStat[kOST];
-    double globalTimeStat[kOST];
+    double ioStartTime, elapsedTime, scatterStartTime, scatterTime, totalTime;
+    double allTimeMax, allTimeAvg, allTimeMin;
+    double timeStat[kOST], globalTimeStat[kOST];
     double mySum;
-    double *doublePtr;
     
-    int colorIO;
-    int colorScatter;
-    int scatterGroupSize;
 
-    MPI_Offset disp, myReqSize, stripeSize, ioReadSize;
+    MPI_Offset   disp, myReqSize, stripeSize, ioReadSize;
     MPI_Datatype strided;
-
-    MPI_Status status;
-    MPI_File fh;
-
-    MPI_Comm MY_COMM_IO;
-    MPI_Comm MY_COMM_SCATTER;
+    MPI_Status   status;
+    MPI_File     fh;
+    MPI_Comm     MY_COMM_IO, MY_COMM_SCATTER;
 
     // Init
     MPI_Init(&argc, &argv);
@@ -52,7 +68,6 @@ int main (int argc, char *argv[])
         exit(-1);
     }
  
-    // filename = argv[1];
     myReqSize     = atoi(argv[2]);
     myReqSize    *= 1048576;
     ioProcPerNode = atoi(argv[3]);
@@ -79,8 +94,8 @@ int main (int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
 
     // color for I/O ranks and scatter ranks
-    colorIO      = worldRank % scatterGroupSize == 0 ? 0 : MPI_UNDEFINED;
-    colorScatter = (int) (worldRank / scatterGroupSize);
+    colorIO      = worldRank % scatterGroupSize == 0 ? 0 : 1;
+    colorScatter = (int)(worldRank / scatterGroupSize);
 
     // debug print
     /* MPI_Barrier(MPI_COMM_WORLD); */
@@ -122,82 +137,70 @@ int main (int argc, char *argv[])
         MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
-    disp = stripeSize * worldRank;
-
-    sprintf(filename, "%s", argv[1]);
 
     if (colorIO == 0) {
 
-        MPI_File_open(MY_COMM_IO, filename, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
+        MPI_File_open(MY_COMM_IO, argv[1], MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
         if(fh==NULL){
-            if (ioRank == 0) { printf("File not exist\n"); }
+            if (ioRank == 0) { printf("File [%s]does not exist\n", argv[1]); }
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
         
+    
+        // set file view
+        disp = stripeSize * worldRank * sizeof(double);
         MPI_File_set_view( fh, disp, MPI_DOUBLE, strided, "native", MPI_INFO_NULL);
 
 
         MPI_Barrier(MY_COMM_IO);
-        start_time = MPI_Wtime();
+        ioStartTime = MPI_Wtime();
 
         MPI_File_read( fh, ioData, ioReadSize, MPI_DOUBLE, &status );
  
-        elapsedTime = MPI_Wtime() - start_time;
+        elapsedTime = MPI_Wtime() - ioStartTime;
         
         MPI_File_close(&fh);
 
         // debug print
-        doublePtr = (double*)ioData;
-        /* for (i = 0; i < ioReadSize/8; i++) { */
-        /*     if (i % 10 == 0) { */
-        /*         printf("\n"); */
-        /*     } */
-        /*     printf("%f  ", doublePtr[i]); */
-            
-        /* } */
-        /* printf("\n[%d] data[0]: %f, disp: %lld, size: %lld\n", worldRank, *doublePtr, disp, ioReadSize); */
+        /* PrintData (ioData, worldRank, disp, ioReadSize); */
     }
+
+    /* fprintf(stderr, "[%d] Finished data read\n[myReqSize] %lld\n", worldRank, myReqSize); */
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    start_time = MPI_Wtime();
+    scatterStartTime = MPI_Wtime();
 
     // Scatter data from I/O ranks to COMM_SCATTER
     MPI_Scatter(ioData, myReqSize, MPI_DOUBLE, myData, myReqSize, MPI_DOUBLE, 0, MY_COMM_SCATTER);
 
 
-    scatterTime = MPI_Wtime() - start_time;
+    scatterTime = MPI_Wtime() - scatterStartTime;
 
+    totalTime   = MPI_Wtime() - ioStartTime;
     // data correctness verification
-    doublePtr = (double*)myData;
-    myTotalDoubleNum = myReqSize / sizeof(double);
-    mySum = 0.0;
-    for (i = 0; i < myTotalDoubleNum; i++) {
-        mySum += doublePtr[i];
-    }
-    printf("[%d] %f\n", worldRank, mySum);
-
-    // Barrier to make sure the timing are not messed up with above prints
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    if (colorIO == 0) {
-        printf("Rank: %d, time %.6f, start offset: %lld, size: %llu\n", worldRank, elapsedTime, disp, ioReadSize);
-    }
+    /* DataSum(myData, worldRank, myReqSize); */
 
     // stat for read time among I/O ranks
     if (colorIO == 0) {
+        printf("%3d, %.6f\n", worldRank, elapsedTime);
+        //printf("[%d] time %.6f, start offset: %lld, size: %llu\n", worldRank, elapsedTime, disp, ioReadSize);
+
         MPI_Reduce(&elapsedTime, &allTimeMax, 1, MPI_DOUBLE, MPI_MAX, 0, MY_COMM_IO);
         MPI_Reduce(&elapsedTime, &allTimeMin, 1, MPI_DOUBLE, MPI_MIN, 0, MY_COMM_IO);
         MPI_Reduce(&elapsedTime, &allTimeAvg, 1, MPI_DOUBLE, MPI_SUM, 0, MY_COMM_IO);
-        allTimeAvg /= ioProcPerNode;
-
-        if (worldRank == 0) {
-            printf("[Read time] %f, %f, %f\n", allTimeMin, allTimeAvg, allTimeMax);
-            printf("[Scatter time] %f\n", scatterTime);
-        }
+        allTimeAvg /= ioProcPerNode * procNum / kCorePerNode;
     }
    
-   
+    MPI_Barrier(MPI_COMM_WORLD);
+ 
+    if (worldRank == 0) {
+        double totalSizeMB = myReqSize * sizeof(double)/ (1024.0*1024.0) * procNum ;
+        printf("[Read time] %f, %f, %f [agg rate]%.2fM/s\n", allTimeMin, allTimeAvg, allTimeMax, totalSizeMB / allTimeMax);
+        printf("[Scatter time] %f, [agg rate] %.2fM/s\n", scatterTime, totalSizeMB / scatterTime);
+        printf("[Total time] %f\n", totalTime);
+    }
+  
     if (colorIO == 0) {
         free(ioData);
         MPI_Comm_free(&MY_COMM_IO);
