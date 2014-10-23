@@ -23,12 +23,12 @@ typedef struct request {
     Layout_t layout;
     int ndim;
     int dims[MAXDIM];
-    int blkSize[MAXDIM];
+    int blk_size[MAXDIM];
     int start[MAXDIM];
     int count[MAXDIM];
 } Request_t;
 
-Layout_t get_layout_type(char *type)
+Layout_t Get_Layout_Type(char *type)
 {
     Layout_t layout_type;
 
@@ -58,13 +58,13 @@ Layout_t get_layout_type(char *type)
     return layout_type;
 }
 
-void print_usage(int argc, char **argv) {
+void Print_Usage(int argc, char **argv) {
     fprintf(stderr, "Wrong number of arguments: %d\n", argc);
     fprintf(stderr, "Usage:\n%s path/to/file file_layout[XYZ,XZY,YZX,HILBERT,Z,BLOCK] ndim dim_0 ... dim_n block_size_0 ... block_size_n start_0 ... start_n count_0 ... count_n\n",argv[0]);
     exit(-1);
 }
 
-void print_request(Request_t *req)
+void Print_Request(Request_t *req)
 {
     int i;
     printf("Layout: %s\n", layoutName[req->layout]);
@@ -74,7 +74,7 @@ void print_request(Request_t *req)
         printf("%d  ", req->dims[i]);
     printf("\nBlock size: ");
     for (i = 0; i < req->ndim; i++) 
-        printf("%d  ", req->blkSize[i]);
+        printf("%d  ", req->blk_size[i]);
     printf("\nStart: ");
     for (i = 0; i < req->ndim; i++) 
         printf("%d  ", req->start[i]);
@@ -84,13 +84,13 @@ void print_request(Request_t *req)
     printf("\n");
 }
 
-void parse_args(int argc, char **argv, Request_t *req)
+void Parse_Args(int argc, char **argv, Request_t *req)
 {
     int i, t;
-    req->layout     = get_layout_type(argv[2]);
+    req->layout     = Get_Layout_Type(argv[2]);
     req->ndim       = atoi(argv[3]);
     if (argc != 4+req->ndim*4) {
-        print_usage(argc, argv);
+        Print_Usage(argc, argv);
     }
     // set offset after ndim
     t = 4;
@@ -98,7 +98,7 @@ void parse_args(int argc, char **argv, Request_t *req)
         req->dims[i] = atoi(argv[t++]);
     
     for (i = 0; i < req->ndim; i++) 
-        req->blkSize[i] = atoi(argv[t++]);
+        req->blk_size[i] = atoi(argv[t++]);
     
     for (i = 0; i < req->ndim; i++) 
         req->start[i] = atoi(argv[t++]);
@@ -114,13 +114,9 @@ int main(int argc, char *argv[])
     int proc_num, my_rank;
     int err;
     int i, j, k, t;
-
     double start_time, elapsed_time, all_time;
-
     char* fname;
-
     Request_t req;
-
 
     // MPI init
     MPI_Init(&argc, &argv);
@@ -129,8 +125,13 @@ int main(int argc, char *argv[])
 
     // init with arguments
     fname = argv[1];
-    parse_args(argc, argv, &req);
-    print_request(&req);
+    Parse_Args(argc, argv, &req);
+    Print_Request(&req);
+
+    // Assuming data are all double values
+
+
+
 
    /*
     // assume cubic space
