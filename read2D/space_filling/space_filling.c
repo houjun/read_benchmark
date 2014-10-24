@@ -382,7 +382,35 @@ void test_idx_to_coord(int ndim, int *dims)
     }
 }
 
-void print_data(int ndim, int *dims, int *data)
+void print_data_double(int ndim, int *dims, double *data)
+{
+    int i, j;
+    int *dimSize;
+
+    dimSize = (int*)malloc(ndim*sizeof(int));
+    dimSize[0] = dims[0];
+
+    // total number of elements
+    for (i = 1; i < ndim; i++) {
+        dimSize[i] = dimSize[i-1] * dims[i];
+    }
+
+    printf("\n");
+    for (i = 0; i < dimSize[ndim-1]; i++) {
+        printf("%4.1f  ", data[i]);   
+
+        for (j = 0; j < ndim; j++) {
+            if ( (i+1) % dimSize[j] == 0) {
+                printf("\n");
+            }
+        }
+    }
+
+    free(dimSize);
+}
+
+
+void print_data_int(int ndim, int *dims, int *data)
 {
     int i, j;
     int *dimSize;
@@ -434,7 +462,7 @@ int test(int ndim, int *dims)
         data_ori[i] = count++;
 
     // print original data
-    print_data(ndim ,dims, data_ori);
+    print_data_int(ndim ,dims, data_ori);
 
 
     // transform to z-ordered data
@@ -446,7 +474,7 @@ int test(int ndim, int *dims)
     }
 
     printf("Z-ordered:\n");
-    print_data(ndim, dims, data_z);
+    print_data_int(ndim, dims, data_z);
     
     
     // transform to hilbert-ordered data
@@ -458,7 +486,7 @@ int test(int ndim, int *dims)
     }
     
     printf("Hilbert-ordered:\n");
-    print_data(ndim, dims, data_h);
+    print_data_int(ndim, dims, data_h);
 }
 /*
 int main(int argc, char* argv[])

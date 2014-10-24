@@ -7,6 +7,7 @@
 #include "space_filling/space_filling.h"
 
 #define MAXDIM 3
+#define KTIMESTEP 1 
 
 typedef enum {
     XYZ,
@@ -23,10 +24,25 @@ typedef struct request {
     Layout_t layout;
     int ndim;
     int dims[MAXDIM];
-    int blk_size[MAXDIM];
     int start[MAXDIM];
     int count[MAXDIM];
+    int b_dims[MAXDIM];
+    int b_sizes[MAXDIM];
+    int b_start[MAXDIM];
+    int b_off[MAXDIM];
+    int b_count[MAXDIM];
 } Request_t;
+
+void timer(MPI_Comm Comm, double elapsed_time, char* op, int my_rank, int proc_num)
+{
+    double all_time_max, all_time_avg, all_time_min;
+    MPI_Reduce(&elapsed_time, &all_time_max, 1, MPI_DOUBLE, MPI_MAX, 0, Comm);
+    MPI_Reduce(&elapsed_time, &all_time_min, 1, MPI_DOUBLE, MPI_MIN, 0, Comm);
+    MPI_Reduce(&elapsed_time, &all_time_avg, 1, MPI_DOUBLE, MPI_SUM, 0, Comm);
+    all_time_avg /= proc_num;
+    if(my_rank == 0) 
+        printf("%s time\n%f, %lf, %lf\n",  op, all_time_min, all_time_avg, all_time_max);
+}
 
 Layout_t Get_Layout_Type(char *type)
 {
@@ -52,7 +68,7 @@ Layout_t Get_Layout_Type(char *type)
     }    
     else {
         fprintf(stderr, "Unsupported layout type %s, exiting...\n", type);
-        exit(-1);
+        MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
     return layout_type;
@@ -61,7 +77,7 @@ Layout_t Get_Layout_Type(char *type)
 void Print_Usage(int argc, char **argv) {
     fprintf(stderr, "Wrong number of arguments: %d\n", argc);
     fprintf(stderr, "Usage:\n%s path/to/file file_layout[XYZ,XZY,YZX,HILBERT,Z,BLOCK] ndim dim_0 ... dim_n block_size_0 ... block_size_n start_0 ... start_n count_0 ... count_n\n",argv[0]);
-    exit(-1);
+    MPI_Abort(MPI_COMM_WORLD, -1);
 }
 
 void Print_Request(Request_t *req)
@@ -72,230 +88,332 @@ void Print_Request(Request_t *req)
     printf("Dim size: ");
     for (i = 0; i < req->ndim; i++) 
         printf("%d  ", req->dims[i]);
-    printf("\nBlock size: ");
-    for (i = 0; i < req->ndim; i++) 
-        printf("%d  ", req->blk_size[i]);
     printf("\nStart: ");
     for (i = 0; i < req->ndim; i++) 
         printf("%d  ", req->start[i]);
     printf("\nCount: ");
     for (i = 0; i < req->ndim; i++) 
         printf("%d  ", req->count[i]);
+    printf("\nBlock size: ");
+    for (i = 0; i < req->ndim; i++) 
+        printf("%d  ", req->b_sizes[i]);
+    printf("\nBlock dims: ");
+    for (i = 0; i < req->ndim; i++) 
+        printf("%d  ", req->b_dims[i]);
+    printf("\nBlock start: ");
+    for (i = 0; i < req->ndim; i++) 
+        printf("%d  ", req->b_start[i]);
+    printf("\nBlock count: ");
+    for (i = 0; i < req->ndim; i++) 
+        printf("%d  ", req->b_count[i]);
     printf("\n");
 }
 
-void Parse_Args(int argc, char **argv, Request_t *req)
+int Request_To_Block_Based(Request_t *req)
+{
+    int i;
+    int head_count;
+    for (i = 0; i < req->ndim; i++) {
+        req->b_start[i]  = req->start[i] / req->b_sizes[i];
+        req->b_off[i]    = req->start[i] % req->b_sizes[i];
+        req->b_count[i]  = req->count[i] / req->b_sizes[i];
+        req->b_dims[i]   = req->dims[i]  / req->b_sizes[i];
+
+        if (req->b_off[i] != 0 || req->count[i] % req->b_sizes[i] != 0) {
+            fprintf(stderr, "Request_To_Block_Based(): request region contains partial block not supported\n");
+            MPI_Abort(MPI_COMM_WORLD, -1);
+            // TODO: add support
+            /* head_count = req->b_dims[i] - req->b_start[i] % req->b_dims[i]; */
+            /* head = req->count[i] */
+        }
+    }
+
+}
+
+void Parse_Args(int argc, char **argv, Request_t *req, int my_rank)
 {
     int i, t;
+    if (argc < 4) {
+        if (my_rank == 0) 
+            Print_Usage(argc, argv);
+    }
     req->layout     = Get_Layout_Type(argv[2]);
     req->ndim       = atoi(argv[3]);
     if (argc != 4+req->ndim*4) {
-        Print_Usage(argc, argv);
+        if (my_rank == 0) 
+            Print_Usage(argc, argv);
     }
-    // set offset after ndim
+    // Set offset after ndim
     t = 4;
     for (i = 0; i < req->ndim; i++) 
         req->dims[i] = atoi(argv[t++]);
     
     for (i = 0; i < req->ndim; i++) 
-        req->blk_size[i] = atoi(argv[t++]);
+        req->b_sizes[i] = atoi(argv[t++]);
     
     for (i = 0; i < req->ndim; i++) 
         req->start[i] = atoi(argv[t++]);
     
     for (i = 0; i < req->ndim; i++) 
         req->count[i] = atoi(argv[t++]);
+
+    // Convert to block based
+    Request_To_Block_Based(req);
 }
 
+int Check_Full_Block(int ndim, int *bsizes, int *req_start)
+{
+    // Return 1 when the request region contains full blocks only
+    // Else return -1
+    int i;
+    for (i = 0; i < ndim; i++) {
+         if (req_start[i] % bsizes[i] != 0) {
+             return -1;
+         }
+    }
+    return 1;
+}
 
+int Get_Req_Block_Count(Request_t *req)
+{
+    int i, nblk;
+    nblk = 1;
+    for (i = 0; i < req->ndim; i++) 
+        nblk *= req->b_count[i];
+    return nblk;
+}
+
+int Get_Block_Size(Request_t *req)
+{
+    int i, size;
+    size = 1;
+    for (i = 0; i < req->ndim; i++) 
+        size *= req->b_sizes[i];
+    return size;
+}
+
+MPI_Offset Get_Timestep_Size(Request_t *req)
+{
+    int i;
+    MPI_Offset size;
+    size = 1;
+    for (i = 0; i < req->ndim; i++) 
+        size *= req->dims[i];
+    return size;
+}
+
+MPI_Offset Get_Total_count(Request_t *req)
+{
+    int i;
+    MPI_Offset size;
+    size = 1;
+    for (i = 0; i < req->ndim; i++) 
+        size *= req->count[i];
+    return size;
+}
+
+MPI_Offset Get_Start_offset(Request_t *req)
+{
+    int i, mul;
+    MPI_Offset start;
+    start = 0;
+    mul = 1;
+    for (i = req->ndim - 1; i >= 0; i--) {
+        start += req->start[i] * mul;
+        mul   *= req->dims[i];
+    }
+    return start;
+}
+
+int Get_Start_Bid(Request_t *req)
+{
+    int i, mul;
+    int start;
+    start = 0;
+    mul = 1;
+    for (i = req->ndim - 1; i >= 0; i--) {
+        start += req->b_start[i] * mul;
+        mul   *= req->b_dims[i];
+    }
+    return start;
+}
+
+void Set_Bcoord(Request_t *req, int* bids)
+{
+    int i, j, k, t, base;
+    t = 0;
+    if (req->ndim == 2) {
+        for (i = 0; i < req->b_count[0]; i++) {
+            for (j = 0; j < req->b_count[1]; j++) {
+                bids[t++] = req->b_start[0] + i;
+                bids[t++] = req->b_start[1] + j;
+            }
+        }
+    }
+    else if (req->ndim == 3) {
+        // TODO
+        ;
+    }
+ 
+}
+
+MPI_Offset Get_Reorder_Start_offset(Request_t *req)
+{
+    MPI_Offset start;
+
+
+    return start;
+}
 
 int main(int argc, char *argv[])
 {
     int proc_num, my_rank;
     int err;
     int i, j, k, t;
+    int unit_blk_size, total_req_blk;
+    int *bcoords, *blocklengths, *displacements;
     double start_time, elapsed_time, all_time;
     char* fname;
     Request_t req;
+
+    MPI_Status status;
+    MPI_File fh;
+    MPI_Datatype MY_READTYPE;
+    MPI_Offset my_total_count, total_count, total_size, start_offset;
 
     // MPI init
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &proc_num);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-    // init with arguments
+    // Init with arguments
     fname = argv[1];
-    Parse_Args(argc, argv, &req);
-    Print_Request(&req);
+    Parse_Args(argc, argv, &req, my_rank);
+    if (my_rank == 0) {
+        Print_Request(&req);
+    }
 
     // Assuming data are all double values
+    total_count = Get_Total_count(&req);
+    total_size  = total_count * sizeof(double);
+    double* buf = (double*)malloc(total_size);
 
+    unit_blk_size = Get_Block_Size(&req);
+    total_req_blk = Get_Req_Block_Count(&req);
 
+    bcoords      = (int*)malloc(total_req_blk * req.ndim * sizeof(int));
+    blocklengths = (int*)malloc(total_req_blk * sizeof(int));
+    displacements= (int*)malloc(total_req_blk * sizeof(int));
 
+    if (Check_Full_Block(req.ndim, req.b_sizes, req.start) != 1) {
+        // TODO: add support when the requested region contains partial blocks
+        fprintf(stderr, "Currently not support requested region contains partial blocks\n");
+        MPI_Abort(MPI_COMM_WORLD, -1);
+    }
 
-   /*
-    // assume cubic space
-    // use fix block size for now
-    int cubic_size = block_size * block_size * block_size;
-    int nblock_x   = x / block_size; 
-    int total_blk  = nblock_x * nblock_x * nblock_x;
-    int nblock_xy  = nblock_x * nblock_x;
-    
-    int* used_blk;
-    int* mapping_c2h;
-    int* mapping_h2c;
+    int decompose_ratio;
+    int my_off;
+    // Assume ratio is 1 2 4 8 ...
+    decompose_ratio = proc_num / KTIMESTEP;
 
-    int  blk_coor_x;
-    int  blk_coor_y;
-    int  nblock_need;
-    int  prev_blk_num;
-    
-    int* array_of_blocklengths;
-    int* array_of_displacements;
+    switch(req.layout) {
+    case XYZ:
+        if (req.ndim == 2) {
+            // Assumes 2D layout and decompose by timestep
+            start_offset  = Get_Start_offset(&req);
+            start_offset += (int)(my_rank / decompose_ratio) * Get_Timestep_Size(&req);
 
-    switch(layout_type) {
-        case XYZ:
-            start_offset = subplane_start_y*x + subplane_start_x + my_rank*x*y + plane_id*x*y; 
-            
-            if(subplane_start_x == 0 && subplane_end_x == y-1) {
-                // read entire plane
-                MPI_Type_contiguous(x*y, unit_datatype, &final_datatype);
-                MPI_Type_commit(&final_datatype);
-            }
-            else {
-                // read partial plane
-                MPI_Type_vector(subplane_end_y-subplane_start_y+1, subplane_end_x-subplane_start_x+1, x, unit_datatype, &final_datatype);
-                MPI_Type_commit(&final_datatype);
-            }
+            // update actual count
+            req.count[0] /= decompose_ratio;
+            my_total_count= Get_Total_count(&req);
 
-            // dummy strided_datatype
-            MPI_Type_vector(subplane_end_y-subplane_start_y+1, 1, y, unit_datatype, &stride_datatype);
-            MPI_Type_commit(&stride_datatype);
-            break;
-
-        case XZY:
-            start_offset = subplane_start_y*x*z + subplane_start_x + my_rank*x + plane_id*x; 
-            
-            MPI_Type_vector(subplane_end_y-subplane_start_y+1, subplane_end_x-subplane_start_y+1, x*z, unit_datatype, &final_datatype);
-            MPI_Type_commit(&final_datatype);
-
-            // dummy strided_datatype
-            MPI_Type_vector(subplane_end_y-subplane_start_y+1, 1, y, unit_datatype, &stride_datatype);
-            MPI_Type_commit(&stride_datatype);
-            break;
-
-        case ZYX:
-            // NOTE: this results in reordered (transposed) result!!!
-            start_offset = subplane_start_x*y*z + subplane_start_y*z + my_rank + plane_id; 
-            
-            // assuming single sub-plane now
-            MPI_Type_vector(subplane_end_y-subplane_start_y+1, 1, y, unit_datatype, &stride_datatype);
-            MPI_Type_commit(&stride_datatype);
-
-            // tried to used negative stride, but doesn't work
-            // also using MPI_Type_Vector over MPI_Type_Vector datatype doesn't work as expected
-            // so use MPI_Type_create_hvector over MPI_Type_Vector, which does work.
-            MPI_Type_create_hvector(subplane_end_x-subplane_start_x+1, 1, y*z*unit_size, stride_datatype, &final_datatype);
-            MPI_Type_commit(&final_datatype);
-
-            break;
-
-        case BLOCK:
-            // NOTE: this results in reordered result!!!
-            start_offset = subplane_start_x / block_size * cubic_size + subplane_start_y / block_size * nblock_x * cubic_size + (plane_id/block_size+my_rank)*x*y*block_size;
-
-            // assume accessed plane width it the divisible by block size
-            // read entire plane of each block
-            MPI_Type_vector( (subplane_end_x-subplane_start_x)/block_size + 1, block_size*block_size, cubic_size,
-                             unit_datatype, &stride_datatype);
-
-            MPI_Type_commit(&stride_datatype);
-
-
-            MPI_Type_create_hvector( (subplane_end_y-subplane_start_y)/block_size + 1, 1, y*z*unit_size,
-                                     stride_datatype, &final_datatype);
-            
-            MPI_Type_commit(&final_datatype);
-
-            break;
-
-        case HILBERT:
-
-            // transform from x-y-z to Hilbert curve
-            mapping_c2h = (int*)malloc(total_blk*sizeof(int));
-            mapping_h2c = (int*)malloc(total_blk*sizeof(int));
-            hilbert_init(3, nblock_x, mapping_c2h, mapping_h2c);
-
-            used_blk = (int*)malloc(sizeof(int)*total_blk);
-            memset(used_blk, 0, sizeof(int)*total_blk);
-            nblock_need = 0;
-            for(i = 0; i < nblock_xy; i++) {
-
-                // calculate block coordinate and compare with the requested range
-                blk_coor_x = (i % nblock_x) * block_size;
-                blk_coor_y = (int)(i / nblock_x) * block_size;
-
-                if( blk_coor_x >= subplane_start_x && blk_coor_x <=subplane_end_x &&
-                    blk_coor_y >= subplane_start_y && blk_coor_y <=subplane_end_y   ) {
-
-                    // mark the corresponding block number in Hilbert curve
-                    used_blk[mapping_c2h[i+(plane_id/block_size)*nblock_xy]] = 1;
-                    nblock_need++;
+            for (i = 0; i < decompose_ratio; i++) {
+                // Further decompose by row
+                if (my_rank % decompose_ratio == i) {
+                    my_off = i * req.count[0];
+                    break;
                 }
             }
-            
+            /* printf("[%d] myoff: %d\n", my_rank, my_off); */
 
-            array_of_blocklengths  = (int*)malloc(nblock_need*sizeof(int));
-            array_of_displacements = (int*)malloc(nblock_need*sizeof(int));
+            start_offset += my_off * req.dims[1];
 
-            t = 0;
-            prev_blk_num = -1;
-            for(i = 0; i < total_blk; i++) {
-                if(used_blk[i] == 1) {
+            MPI_Type_vector(req.count[0], req.count[1], req.dims[1], MPI_DOUBLE, &MY_READTYPE);
+            MPI_Type_commit(&MY_READTYPE);
+        }
+        else if (req.ndim == 3) {
+            // TODO
+        }
+        else {
+            fprintf(stderr, "Unsupported dimension, exiting...\n");
+            MPI_Abort(MPI_COMM_WORLD, -1);
+        }
+        
+        break;
 
-                    // calculate initial offset
-                    if(t == 0) {
-                        start_offset = i * cubic_size;
-                        prev_blk_num = i;
-                        array_of_displacements[0] = 0;
-                    }
-                    else {
-                        array_of_displacements[t] = (i-prev_blk_num) * cubic_size + array_of_displacements[t-1];
-                    }
-                    // all has the same block length with the assumption that
-                    // the requested range contains COMPLETE x-y plane of all needed blocks
-                    array_of_blocklengths[t++] = block_size * block_size;
-                    prev_blk_num = i;
-                }
+    case BLOCK:
+        // NOTE: this results in reordered result!!!
+        
+        Set_Bcoord(&req, bcoords);
+       
+        for (i = 0; i < total_req_blk; i++) {
+            blocklengths[i]   = unit_blk_size;
+            displacements[i]  = coord_to_idx(req.ndim, req.b_dims, &bcoords[i*req.ndim]) * unit_blk_size; 
+            // debug print
+            //printf("%d  ", displacements[i]);
+        }
+        
+        start_offset   = 0;
+        my_total_count = total_req_blk * unit_blk_size;
 
-            }
+        MPI_Type_indexed(total_req_blk, blocklengths, displacements, MPI_DOUBLE, &MY_READTYPE);
+        MPI_Type_commit(&MY_READTYPE);
 
-            if(nblock_need == 1) {
-                MPI_Type_contiguous(block_size*block_size, unit_datatype, &final_datatype);
-                MPI_Type_commit(&final_datatype);
-            }
-            else {
-                MPI_Type_indexed(nblock_need, array_of_blocklengths, array_of_displacements, unit_datatype, &final_datatype);
-                MPI_Type_commit(&final_datatype);
-            }
+        break;
 
-            free(used_blk);
-            free(mapping_c2h);
-            free(mapping_h2c);
+    case Z:
+        Set_Bcoord(&req, bcoords);
+       
+        for (i = 0; i < total_req_blk; i++) {
+            blocklengths[i]   = unit_blk_size;
+            displacements[i]  = coord_to_z(req.ndim, req.b_dims, &bcoords[i*req.ndim]) * unit_blk_size; 
+            // debug print
+            printf("%d  ", displacements[i]);
+        }
+        
+        start_offset   = 0;
+        my_total_count = total_req_blk * unit_blk_size;
 
-            // dummy commit just to make error of freeing this go away
-            MPI_Type_vector( (subplane_end_x-subplane_start_x)/block_size + 1, block_size*block_size, cubic_size,
-                             unit_datatype, &stride_datatype);
-            MPI_Type_commit(&stride_datatype);
-            break;
+        MPI_Type_indexed(total_req_blk, blocklengths, displacements, MPI_DOUBLE, &MY_READTYPE);
+        MPI_Type_commit(&MY_READTYPE);
 
+       break;
+
+
+    case HILBERT:
+        Set_Bcoord(&req, bcoords);
+       
+        for (i = 0; i < total_req_blk; i++) {
+            blocklengths[i]   = unit_blk_size;
+            displacements[i]  = coord_to_hilbert(req.ndim, req.b_dims, &bcoords[i*req.ndim]) * unit_blk_size; 
+            // debug print
+            printf("%d  ", displacements[i]);
+        }
+        
+        start_offset   = 0;
+        my_total_count = total_req_blk * unit_blk_size;
+
+        MPI_Type_indexed(total_req_blk, blocklengths, displacements, MPI_DOUBLE, &MY_READTYPE);
+        MPI_Type_commit(&MY_READTYPE);
+
+       break;
+
+    default:
+        fprintf(stderr, "Unsupported layout type %s, exiting...\n", req.layout);
+        MPI_Abort(MPI_COMM_WORLD, -1);
     }
     
 
-    MPI_Status status;
-    MPI_File fh;
-    size_t total_size = (subplane_end_x-subplane_start_x+1)*(subplane_end_y-subplane_start_y+1)*unit_size;
-    char* buf = (char*)malloc(total_size);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -306,49 +424,51 @@ int main(int argc, char *argv[])
     err = MPI_File_open(MPI_COMM_WORLD, fname, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
     assert(err == MPI_SUCCESS);
 
-    MPI_File_set_view(fh, start_offset*unit_size, unit_datatype, final_datatype, "native", MPI_INFO_NULL);
-    MPI_File_read(fh, buf, total_size, MPI_BYTE, &status);
+    // start_offset is in bytes
+    start_offset *= sizeof(double);
+    /* fprintf(stderr, "[%d]: start_offset: %d\n", my_rank, start_offset); */
+    MPI_File_set_view(fh, start_offset, MPI_DOUBLE, MY_READTYPE, "native", MPI_INFO_NULL);
+    MPI_File_read(fh, buf, my_total_count, MPI_DOUBLE, &status);
 
     MPI_File_close(&fh);
 
     // ============================ End of actual Read ==========================
     elapsed_time = MPI_Wtime() - start_time;
-    all_time = timer(elapsed_time, "Read");
+    timer(MPI_COMM_WORLD, elapsed_time, "Read", my_rank, proc_num);
 
     double data_in_mb = (double)(total_size*proc_num)/(1024.0*1024.0);
-    if(my_rank == 0)
-        printf("Total data: %dM Agg Bandwidth: %lf\n", (int)data_in_mb, data_in_mb/all_time);
+    /* if(my_rank == 0) */
+    /*     printf("Total data: %dM Agg Bandwidth: %lf\n", (int)data_in_mb, data_in_mb/all_time); */
 
+    printf("[%d]\n", my_rank);
+    print_data_double(req.ndim, req.count, buf);
 
     // ================== == Calculate sum for varification ========================
     double my_sum, all_sum;
-    uint64_t nelem = (subplane_end_x-subplane_start_x+1)*(subplane_end_y-subplane_start_y+1);
     uint64_t iter;
     
     start_time = MPI_Wtime();
     
-    for(iter = 0; iter <nelem; iter++) {
-        my_sum += data_full[iter];
-    }
+    for(iter = 0; iter < my_total_count; iter++) 
+        my_sum += buf[iter];
+
     MPI_Reduce(&my_sum, &all_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
     if(my_rank == 0)
         printf("Sum:%lf\n", all_sum);
 
     // timing of reconstruction
     elapsed_time = MPI_Wtime() - start_time;
-    all_time = timer(elapsed_time, "Sum");
+    timer(MPI_COMM_WORLD, elapsed_time, "Summation", my_rank, proc_num);
 
-        
-    MPI_Type_free(&unit_datatype);
-    MPI_Type_free(&stride_datatype);
-    MPI_Type_free(&final_datatype);
 
-    if(total_size_full != 0)
-        free(data_full);
+    MPI_Type_free(&MY_READTYPE);
+
     free(buf);
-
-    */
+    free(bcoords);
+    free(displacements);
+    free(blocklengths);
 
     MPI_Finalize();
     return 0;
+
 }

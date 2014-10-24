@@ -7,6 +7,8 @@
 #include <math.h>
 #include <strings.h>
 
+int coord_to_idx(int ndim, int *dims, int* coord);
+
 // for Hilbert
 int coord_to_hilbert(int ndim, int *dims, int *coord);
 

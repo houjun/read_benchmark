@@ -22,8 +22,6 @@ int main (int argc, char *argv[])
     double *ioData, *myData;
 
     double start_time, elapsedTime, scatterTime, allTimeMax, allTimeAvg, allTimeMin;
-    double timeStat[kOST];
-    double globalTimeStat[kOST];
     double mySum;
     double *doublePtr;
     
