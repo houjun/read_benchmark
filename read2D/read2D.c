@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
         
         Set_Bcoord(&req, bcoords);
        
-        printf("[%d]\n", my_rank);
+        /* printf("[%d]\n", my_rank); */
         for (i = 0; i < total_req_blk_timestep * KTIMESTEP; i++) {
             blocklengths[i]   = unit_blk_size;
             if (req.layout == BLOCK) 
@@ -370,7 +370,7 @@ int main(int argc, char *argv[])
                 displacements[i]  = coord_to_hilbert(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
 
             // debug print
-            printf("%d  ", displacements[i]);
+            /* printf("%d  ", displacements[i]); */
             displacements[i] *= unit_blk_size;
         }
  
@@ -391,8 +391,8 @@ int main(int argc, char *argv[])
 
         /* my_total_count *= unit_blk_size; */
 
-        printf("[%d] start_off: %d, my_total_count: %d, my_off: %d, disp[0]: %d, disp[1]: %d\n"                                 \
-                    , my_rank, start_offset, my_total_count, my_off,  displacements[my_off], displacements[my_off+1]);
+        /* printf("[%d] start_off: %d, my_total_count: %d, my_off: %d, disp[0]: %d, disp[1]: %d\n"                                 \ */
+        /*             , my_rank, start_offset, my_total_count, my_off,  displacements[my_off], displacements[my_off+1]); */
 
         MPI_Type_indexed(my_total_count, blocklengths + my_off, displacements + my_off, MPI_DOUBLE, &MY_READTYPE);
         MPI_Type_commit(&MY_READTYPE);
@@ -431,13 +431,14 @@ int main(int argc, char *argv[])
     /* if(my_rank == 0) */
     /*     printf("Total data: %dM Agg Bandwidth: %lf\n", (int)data_in_mb, data_in_mb/all_time); */
 
-    printf("[%d]\n", my_rank);
-    print_data_double(req.ndim, req.count, buf);
 
     // ================== == Calculate sum for varification ========================
     double my_sum, all_sum;
     uint64_t iter;
     
+    /* printf("[%d]\n", my_rank); */
+    /* print_data_double(req.ndim, req.count, buf); */
+
     start_time = MPI_Wtime();
     
     for(iter = 0; iter < my_total_count * unit_blk_size; iter++) 
@@ -448,8 +449,8 @@ int main(int argc, char *argv[])
         printf("Sum:%lf\n", all_sum);
 
     // timing of reconstruction
-    elapsed_time = MPI_Wtime() - start_time;
-    timer(MPI_COMM_WORLD, elapsed_time, "Summation", my_rank, proc_num);
+    /* elapsed_time = MPI_Wtime() - start_time; */
+    /* timer(MPI_COMM_WORLD, elapsed_time, "Summation", my_rank, proc_num); */
 
 
     MPI_Type_free(&MY_READTYPE);
