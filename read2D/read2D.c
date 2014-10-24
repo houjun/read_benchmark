@@ -7,7 +7,7 @@
 #include "space_filling/space_filling.h"
 
 #define MAXDIM 3
-#define KTIMESTEP 1 
+#define KTIMESTEP 4 
 
 typedef enum {
     XYZ,
@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
     int proc_num, my_rank;
     int err;
     int i, j, k, t;
-    int unit_blk_size, total_req_blk;
+    int unit_blk_size, total_req_blk_timestep;
     int *bcoords, *blocklengths, *displacements;
     double start_time, elapsed_time, all_time;
     char* fname;
@@ -299,11 +299,11 @@ int main(int argc, char *argv[])
     double* buf = (double*)malloc(total_size);
 
     unit_blk_size = Get_Block_Size(&req);
-    total_req_blk = Get_Req_Block_Count(&req);
+    total_req_blk_timestep = Get_Req_Block_Count(&req);
 
-    bcoords      = (int*)malloc(total_req_blk * req.ndim * sizeof(int));
-    blocklengths = (int*)malloc(total_req_blk * sizeof(int));
-    displacements= (int*)malloc(total_req_blk * sizeof(int));
+    bcoords      = (int*)malloc(total_req_blk_timestep * req.ndim  * sizeof(int));
+    blocklengths = (int*)malloc(total_req_blk_timestep * KTIMESTEP * sizeof(int));
+    displacements= (int*)malloc(total_req_blk_timestep * KTIMESTEP * sizeof(int));
 
     if (Check_Full_Block(req.ndim, req.b_sizes, req.start) != 1) {
         // TODO: add support when the requested region contains partial blocks
@@ -318,6 +318,7 @@ int main(int argc, char *argv[])
 
     switch(req.layout) {
     case XYZ:
+        unit_blk_size = 1;
         if (req.ndim == 2) {
             // Assumes 2D layout and decompose by timestep
             start_offset  = Get_Start_offset(&req);
@@ -352,61 +353,51 @@ int main(int argc, char *argv[])
         break;
 
     case BLOCK:
+    case Z:
+    case HILBERT:
         // NOTE: this results in reordered result!!!
         
         Set_Bcoord(&req, bcoords);
        
-        for (i = 0; i < total_req_blk; i++) {
+        printf("[%d]\n", my_rank);
+        for (i = 0; i < total_req_blk_timestep * KTIMESTEP; i++) {
             blocklengths[i]   = unit_blk_size;
-            displacements[i]  = coord_to_idx(req.ndim, req.b_dims, &bcoords[i*req.ndim]) * unit_blk_size; 
+            if (req.layout == BLOCK) 
+                displacements[i]  = coord_to_idx(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
+            else if (req.layout == Z) 
+                displacements[i]  = coord_to_z(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
+            else if (req.layout == HILBERT) 
+                displacements[i]  = coord_to_hilbert(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
+
             // debug print
-            //printf("%d  ", displacements[i]);
+            printf("%d  ", displacements[i]);
+            displacements[i] *= unit_blk_size;
+        }
+ 
+        req.count[0] /= decompose_ratio;
+
+        my_total_count = total_req_blk_timestep / decompose_ratio;
+        if (my_rank == proc_num - 1) {
+            // Probably need fix
+            if (total_req_blk_timestep % decompose_ratio != 0) {
+                my_total_count += total_req_blk_timestep - my_total_count * proc_num ;
+            }
         }
         
-        start_offset   = 0;
-        my_total_count = total_req_blk * unit_blk_size;
+        my_off         = my_rank * my_total_count; 
 
-        MPI_Type_indexed(total_req_blk, blocklengths, displacements, MPI_DOUBLE, &MY_READTYPE);
+        start_offset   = (int)(my_rank/decompose_ratio);
+        start_offset  *= Get_Timestep_Size(&req);
+
+        /* my_total_count *= unit_blk_size; */
+
+        printf("[%d] start_off: %d, my_total_count: %d, my_off: %d, disp[0]: %d, disp[1]: %d\n"                                 \
+                    , my_rank, start_offset, my_total_count, my_off,  displacements[my_off], displacements[my_off+1]);
+
+        MPI_Type_indexed(my_total_count, blocklengths + my_off, displacements + my_off, MPI_DOUBLE, &MY_READTYPE);
         MPI_Type_commit(&MY_READTYPE);
 
         break;
-
-    case Z:
-        Set_Bcoord(&req, bcoords);
-       
-        for (i = 0; i < total_req_blk; i++) {
-            blocklengths[i]   = unit_blk_size;
-            displacements[i]  = coord_to_z(req.ndim, req.b_dims, &bcoords[i*req.ndim]) * unit_blk_size; 
-            // debug print
-            printf("%d  ", displacements[i]);
-        }
-        
-        start_offset   = 0;
-        my_total_count = total_req_blk * unit_blk_size;
-
-        MPI_Type_indexed(total_req_blk, blocklengths, displacements, MPI_DOUBLE, &MY_READTYPE);
-        MPI_Type_commit(&MY_READTYPE);
-
-       break;
-
-
-    case HILBERT:
-        Set_Bcoord(&req, bcoords);
-       
-        for (i = 0; i < total_req_blk; i++) {
-            blocklengths[i]   = unit_blk_size;
-            displacements[i]  = coord_to_hilbert(req.ndim, req.b_dims, &bcoords[i*req.ndim]) * unit_blk_size; 
-            // debug print
-            printf("%d  ", displacements[i]);
-        }
-        
-        start_offset   = 0;
-        my_total_count = total_req_blk * unit_blk_size;
-
-        MPI_Type_indexed(total_req_blk, blocklengths, displacements, MPI_DOUBLE, &MY_READTYPE);
-        MPI_Type_commit(&MY_READTYPE);
-
-       break;
 
     default:
         fprintf(stderr, "Unsupported layout type %s, exiting...\n", req.layout);
@@ -428,7 +419,7 @@ int main(int argc, char *argv[])
     start_offset *= sizeof(double);
     /* fprintf(stderr, "[%d]: start_offset: %d\n", my_rank, start_offset); */
     MPI_File_set_view(fh, start_offset, MPI_DOUBLE, MY_READTYPE, "native", MPI_INFO_NULL);
-    MPI_File_read(fh, buf, my_total_count, MPI_DOUBLE, &status);
+    MPI_File_read(fh, buf, my_total_count * unit_blk_size, MPI_DOUBLE, &status);
 
     MPI_File_close(&fh);
 
@@ -449,7 +440,7 @@ int main(int argc, char *argv[])
     
     start_time = MPI_Wtime();
     
-    for(iter = 0; iter < my_total_count; iter++) 
+    for(iter = 0; iter < my_total_count * unit_blk_size; iter++) 
         my_sum += buf[iter];
 
     MPI_Reduce(&my_sum, &all_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
