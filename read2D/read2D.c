@@ -7,7 +7,7 @@
 #include "space_filling/space_filling.h"
 
 #define MAXDIM 3
-#define KTIMESTEP 4 
+#define KTIMESTEP 1 
 
 typedef enum {
     XYZ,
@@ -251,8 +251,16 @@ void Set_Bcoord(Request_t *req, int* bids)
         }
     }
     else if (req->ndim == 3) {
-        // TODO
-        ;
+         for (i = 0; i < req->b_count[0]; i++) {
+            for (j = 0; j < req->b_count[1]; j++) {
+                for (k = 0; k < req->b_count[2]; k++) {
+                
+                    bids[t++] = req->b_start[0] + i;
+                    bids[t++] = req->b_start[1] + j;
+                    bids[t++] = req->b_start[2] + k;
+                }
+            }
+        }
     }
  
 }
@@ -263,6 +271,33 @@ MPI_Offset Get_Reorder_Start_offset(Request_t *req)
 
 
     return start;
+}
+
+int Compare_Int(const void *a, const void *b)
+{
+  if ( *(int *)a <  *(int *)b ) return -1;
+  if ( *(int *)a == *(int *)b ) return 0;
+  if ( *(int *)a >  *(int *)b ) return 1;
+}
+
+void Test_XYZ()
+{
+
+}
+
+void Test_Z()
+{
+
+}
+
+void Test_Block()
+{
+
+}
+
+void Test_Hilbert()
+{
+
 }
 
 int main(int argc, char *argv[])
@@ -344,6 +379,7 @@ int main(int argc, char *argv[])
         }
         else if (req.ndim == 3) {
             // TODO
+            fprintf(stderr, "3D XYZ layout is not supported yet :\(\n");
         }
         else {
             fprintf(stderr, "Unsupported dimension, exiting...\n");
@@ -362,17 +398,25 @@ int main(int argc, char *argv[])
         /* printf("[%d]\n", my_rank); */
         for (i = 0; i < total_req_blk_timestep * KTIMESTEP; i++) {
             blocklengths[i]   = unit_blk_size;
-            if (req.layout == BLOCK) 
+            switch (req.layout) {
+            case BLOCK:
                 displacements[i]  = coord_to_idx(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
-            else if (req.layout == Z) 
+                break;
+            case Z:
                 displacements[i]  = coord_to_z(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
-            else if (req.layout == HILBERT) 
+                break;
+            case HILBERT:
                 displacements[i]  = coord_to_hilbert(req.ndim, req.b_dims, &bcoords[i*req.ndim % (total_req_blk_timestep*req.ndim)]); 
+                break;
+            }
 
             // debug print
             /* printf("%d  ", displacements[i]); */
             displacements[i] *= unit_blk_size;
         }
+
+        // Sort the displacements array to get contiguous accesses
+        qsort(displacements, total_req_blk_timestep * KTIMESTEP, sizeof(int), Compare_Int);
  
         req.count[0] /= decompose_ratio;
 
@@ -436,8 +480,8 @@ int main(int argc, char *argv[])
     double my_sum, all_sum;
     uint64_t iter;
     
-    /* printf("[%d]\n", my_rank); */
-    /* print_data_double(req.ndim, req.count, buf); */
+    printf("[%d]\n", my_rank);
+    print_data_double(req.ndim, req.count, buf);
 
     start_time = MPI_Wtime();
     

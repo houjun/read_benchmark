@@ -310,7 +310,7 @@ int coord_to_hilbert(int ndim, int *dims, int* coord)
         return (int)Morton_to_Hilbert2D((uint)zid, (uint)size);
     }
     else if (ndim == 3) {
-        return (int)Morton_to_Hilbert2D((uint)zid, (uint)size);
+        return (int)Morton_to_Hilbert3D((uint)zid, (uint)size);
     }
 
     return -1;
